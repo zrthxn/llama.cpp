@@ -5,7 +5,7 @@
 
 #include "common.h"
 #include "llama.h"
-#include "crow.h"
+#include "httplib.h"
 
 #include <stdio.h>
 #include <cassert>
@@ -25,6 +25,8 @@
 #elif defined(_WIN32)
 #include <signal.h>
 #endif
+
+using namespace httplib;
 
 static console_state con_st;
 static llama_context **g_ctx;
@@ -531,11 +533,23 @@ int main(int argc, char **argv)
         }
     }
 
-    crow::SimpleApp app;
-    // app.loglevel(crow::LogLevel::Warning);
+    Server app;
 
-    CROW_ROUTE(app, "/completion").methods("POST"_method)([&params, &ctx](const crow::request &req)
-                                                          {
+    struct completion_body {
+        std::string prompt;
+        std::string tempfile;
+
+        int n_predict;
+        int top_k;
+        int ctx_size;
+        int repeat_last_n;
+        float top_p;
+        float temp;
+        float repeat_penalty;
+    };
+
+    app.Post("/completion")(
+    [&params, &ctx](const Request& req, Response& res){
         auto body = crow::json::load(req.body);
         if (!body) return crow::response(crow::status::BAD_REQUEST);
 
@@ -568,29 +582,9 @@ int main(int argc, char **argv)
         // Write output of LLaMA to file stream.
         run_llama(ctx, runparams, &outfile);
 
-        return crow::response(crow::status::OK); });
+        return crow::response(crow::status::OK); 
+    });
 
-    // CROW_ROUTE(app, "/embedding").methods("POST"_method)
-    // ([&params, &ctx](const crow::request& req){
-    //     auto body = crow::json::load(req.body);
-    //     if (!body) return crow::response(crow::status::BAD_REQUEST);
-
-    //     // Create new params for this request only
-    //     gpt_params runparams = params;
-
-    //     // Set run params from body
-    //     runparams.prompt    = body["prompt"].s();
-    //     runparams.embedding = true;
-
-    //     // Open the tempfile into a stream.
-    //     std::ofstream outfile(body["tempfile"].s(), std::ios::out);
-
-    //     // Write output of LLaMA to file stream.
-    //     run_llama_embedding(ctx, runparams, &outfile);
-
-    //     return crow::response(crow::status::OK);
-    // });
-
-    app.port(BINDPORT).multithreaded().run();
+    svr.listen("0.0.0.0", 8080);
     return 0;
 }
